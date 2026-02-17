@@ -40,6 +40,26 @@ struct ContentView: View {
                     .cornerRadius(16)
                 }
                 
+                // Error Display
+                if let error = pttManager.lastError {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                            Text("Error")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Text(error)
+                            .font(.body)
+                            .foregroundColor(.orange)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(12)
+                }
+                
                 // Response Area
                 if !pttManager.lastResponse.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
@@ -85,7 +105,18 @@ struct ContentView: View {
         }
         .onAppear {
             Task {
+                pttManager.settings = settings
                 await pttManager.setup()
+            }
+        }
+        .onChange(of: settings.gatewayURL) { _, newValue in
+            if settings.isConfigured {
+                pttManager.updateGatewayConfig(url: newValue, token: settings.gatewayToken)
+            }
+        }
+        .onChange(of: settings.gatewayToken) { _, newValue in
+            if settings.isConfigured {
+                pttManager.updateGatewayConfig(url: settings.gatewayURL, token: newValue)
             }
         }
     }

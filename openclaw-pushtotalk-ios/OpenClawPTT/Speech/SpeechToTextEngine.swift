@@ -98,12 +98,16 @@ class SpeechToTextEngine: ObservableObject {
         }
     }
     
-    func stopRecording() async {
+    func stopRecording() async -> String {
         audioEngine?.stop()
         audioEngine?.inputNode.removeTap(onBus: 0)
         recognitionRequest?.endAudio()
         isRecording = false
         
+        // Wait briefly for final recognition result
+        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        
         PTTLogger.info("Recording stopped. Final text: \(transcribedText)")
+        return transcribedText
     }
 }

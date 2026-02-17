@@ -9,13 +9,16 @@ class PTTManager: ObservableObject {
     @Published var isConnected = false
     @Published var transcribedText = ""
     @Published var lastResponse = ""
+    @Published var lastError: String?
     
     private var speechEngine: SpeechToTextEngine?
     private var gatewayClient: GatewayClient?
     private var audioPlayer: AudioPlayer?
-    private var ttsEngine: TTSEngine?
     
     private let channelUUID = UUID()
+    
+    // Reference to settings (injected from app)
+    weak var settings: SettingsStore?
     
     func setup() async {
         do {
@@ -23,7 +26,11 @@ class PTTManager: ObservableObject {
             speechEngine = SpeechToTextEngine()
             gatewayClient = GatewayClient()
             audioPlayer = AudioPlayer()
-            ttsEngine = TTSEngine()
+            
+            // Configure gateway client with settings
+            if let settings = settings, settings.isConfigured {
+                gatewayClient?.configure(with: .init(baseURL: settings.gatewayURL, token: settings.gatewayToken))
+            }
             
             // Request speech authorization
             let authorized = await speechEngine?.requestAuthorization() ?? false
@@ -40,7 +47,14 @@ class PTTManager: ObservableObject {
         } catch {
             PTTLogger.error("Failed to setup PTT: \(error)")
             isConnected = false
+            lastError = "Setup failed: \(error.localizedDescription)"
         }
+    }
+    
+    /// Update gateway configuration when settings change
+    func updateGatewayConfig(url: String, token: String) {
+        gatewayClient?.configure(with: .init(baseURL: url, token: token))
+        PTTLogger.info("Gateway config updated")
     }
     
     func startTransmitting() async {
@@ -62,30 +76,40 @@ class PTTManager: ObservableObject {
         PTTLogger.info("Stopped transmitting")
         
         // Stop recording and get transcribed text
-        await speechEngine?.stopRecording()
-        
-        if let text = speechEngine?.transcribedText, !text.isEmpty {
+        if let text = await speechEngine?.stopRecording(), !text.isEmpty {
             transcribedText = text
             PTTLogger.info("Transcribed: \(text)")
             
             // Send to Gateway
             await sendToGateway(text: text)
+        } else {
+            PTTLogger.warning("No transcription available")
+            lastError = "No speech detected"
         }
     }
     
     private func sendToGateway(text: String) async {
-        guard let client = gatewayClient else { return }
+        guard let client = gatewayClient else {
+            lastError = "Gateway not configured"
+            return
+        }
+        
+        // Clear previous error
+        lastError = nil
         
         do {
             let response = try await client.sendMessage(text)
             lastResponse = response
             PTTLogger.info("Received response: \(response)")
             
-            // Play response audio
-            await audioPlayer?.speak(text: response)
+            // Speak response if auto-speak is enabled
+            if settings?.autoSpeak == true {
+                await audioPlayer?.speak(text: response)
+            }
         } catch {
             PTTLogger.error("Failed to send message: \(error)")
-            lastResponse = "Error: \(error.localizedDescription)"
+            lastError = error.localizedDescription
+            lastResponse = ""
         }
     }
 }

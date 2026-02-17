@@ -1,12 +1,14 @@
 import Foundation
 import AVFoundation
 
-/// Handles audio playback
+/// Handles audio playback and TTS
 @MainActor
 class AudioPlayer: NSObject, ObservableObject {
     @Published var isPlaying = false
+    @Published var isSpeaking = false
     
     private var player: AVAudioPlayer?
+    private var ttsEngine: TTSEngine?
     
     override init() {
         super.init()
@@ -50,12 +52,21 @@ class AudioPlayer: NSObject, ObservableObject {
     func stop() {
         player?.stop()
         isPlaying = false
+        ttsEngine?.stop()
+        isSpeaking = false
     }
     
     func speak(text: String) async {
-        // Use TTS engine for text-to-speech
-        let tts = TTSEngine()
-        await tts.speak(text)
+        guard !text.isEmpty else { return }
+        
+        // Create or reuse TTS engine
+        if ttsEngine == nil {
+            ttsEngine = TTSEngine()
+        }
+        
+        isSpeaking = true
+        await ttsEngine?.speak(text)
+        isSpeaking = false
     }
 }
 
